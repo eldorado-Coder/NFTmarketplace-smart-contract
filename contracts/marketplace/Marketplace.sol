@@ -2,7 +2,6 @@
 
 pragma solidity >=0.7.0 <0.9.0;
 
-import "./ERC721.sol";
 import "./IERC721.sol";
 import "./IERC20.sol";
 import "./Address.sol";
@@ -29,7 +28,7 @@ contract Marketplace {
     using Address for address;
     using SafeMath for uint256;
 
-    address internal nftAddress;
+    address private nftAddress;
     bytes internal constant MARKET_DATA = bytes("Roiland Market");
 
     OrderInfo[] internal orders;
@@ -42,17 +41,20 @@ contract Marketplace {
     event OrderFilled(address _seller, address indexed _buyer, uint256 indexed _orderId, address indexed _quoteToken, uint256 _price);
     event OrderCancelled(address indexed _seller, uint256 indexed _orderId);
     event OrderPriceChanged(address indexed _seller, uint256 indexed _orderId, uint256 _oldPrice, uint256 _newPrice);
+    event ERC721TokenReceived(address indexed _operator, address indexed _from, address indexed _tokenAddress, uint256 _tokenId, bytes _data);
     
-    function createOrderForSale(uint256 _tokenId, address _quoteToken, uint256 _price) external {
+    function createOrderForSale(uint256 _tokenId, address _quoteToken, uint256 _price) external returns (uint256) {
         require(_price > 0, "price cannot be zero");
         require(_quoteToken == address(0) || _quoteToken.isContract(), "invalid address for quote token");
         require(!msg.sender.isContract(), "caller must be external wallet");
 
         uint256 orderId = _createOrder(1, _tokenId, _quoteToken, _price, 0);
         emit OrderForSale(msg.sender, orderId, _tokenId, _quoteToken, _price);
+
+        return orderId;
     }
 
-    function createOrderForAuction(uint256 _tokenId, address _quoteToken, uint256 _price, uint256 _endTime) external {
+    function createOrderForAuction(uint256 _tokenId, address _quoteToken, uint256 _price, uint256 _endTime) external returns (uint256) {
         require(_price > 0, "price cannot be zero");
         require(_endTime > block.timestamp, "end time cannot be in the past");
         require(_quoteToken == address(0) || _quoteToken.isContract(), "invalid address for quote token");
@@ -60,6 +62,8 @@ contract Marketplace {
 
         uint256 orderId = _createOrder(2, _tokenId, _quoteToken, _price, _endTime);
         emit OrderForAuction(msg.sender, orderId, _tokenId, _quoteToken, _price, _endTime);
+
+        return orderId;
     }
 
     function buyForOrder(uint256 _orderId) external payable {
@@ -217,5 +221,54 @@ contract Marketplace {
 
             emit OrderFilled(orders[_orderId].seller, orders[_orderId].buyer, _orderId, orders[_orderId].quoteToken, orders[_orderId].price);
         }
+    }
+
+    function getTokenAddress() external view returns (address) {
+        return nftAddress;
+    }
+
+    function setTokenAddress(address contractAddr) external {
+        nftAddress = contractAddr;
+    }
+
+    function getOrderCount() external view returns (uint256) {
+        return orders.length;
+    }
+
+    function getOrderById(uint256 _orderId) external view returns (OrderInfo memory) {
+        return orders[_orderId];
+    }
+
+    function getOrderByIdBatch(uint256[] calldata _orderIds) external view returns (OrderInfo[] memory) {
+        OrderInfo[] memory _orders = new OrderInfo[](_orderIds.length);
+
+        for(uint256 i = 0; i < _orderIds.length; i++) {
+            _orders[i] = orders[_orderIds[i]];
+        }
+
+        return _orders;
+    }
+
+    function getOpenOrderCount() external view returns (uint256) {
+        return openOrders.length;
+    }
+
+    function getOpenOrderByIndex(uint256 _index) external view returns (OrderInfo memory) {
+        return orders[openOrders[_index]];
+    }
+
+    function getOpenOrderByIndexBatch(uint256[] calldata _indexes) external view returns (OrderInfo[] memory) {
+        OrderInfo[] memory _orders = new OrderInfo[](_indexes.length);
+
+        for(uint256 i = 0; i < _indexes.length; i++) {
+            _orders[i] = orders[openOrders[_indexes[i]]];
+        }
+
+        return _orders;
+    }
+
+    function onERC721Received(address _operator, address _from, uint256 _tokenId, bytes memory _data) public returns (bytes4) {
+        emit ERC721TokenReceived(_operator, _from, msg.sender, _tokenId, _data);
+        return this.onERC721Received.selector;
     }
 }
